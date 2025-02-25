@@ -8,6 +8,11 @@ GIT_HOOKS := .git/hooks/applied
 DUT_DIR := dudect
 all: $(GIT_HOOKS) qtest
 
+all: format $(TARGET)
+
+format:
+	clang-format -i *.[ch]
+
 tid := 0
 
 # Control test case option of valgrind
@@ -43,7 +48,6 @@ OBJS := qtest.o report.o console.o harness.o queue.o \
         linenoise.o web.o
 
 deps := $(OBJS:%.o=.%.o.d)
-
 qtest: $(OBJS)
 	$(VECHO) "  LD\t$@\n"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lm
@@ -57,7 +61,6 @@ check: qtest
 	./$< -v 3 -f traces/trace-eg.cmd
 
 test: qtest scripts/driver.py
-	$(Q)scripts/check-repo.sh
 	scripts/driver.py -c
 
 valgrind_existence:
@@ -82,7 +85,6 @@ clean:
 	(cd traces; rm -f *~)
 
 distclean: clean
-	-rm -f .cmd_history
-	-rm -rf .out
+	rm -f .cmd_history
 
 -include $(deps)

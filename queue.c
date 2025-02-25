@@ -13,40 +13,107 @@
 /* Create an empty queue */
 struct list_head *q_new()
 {
-    return NULL;
+    struct list_head *new = malloc(sizeof(struct list_head));
+    new->next = new;
+    new->prev = new;
+    return new;
 }
 
 /* Free all storage used by queue */
-void q_free(struct list_head *head) {}
+void q_free(struct list_head *head)
+{
+    struct list_head *cur = head->next;
+    while (cur != NULL && cur != head) {
+        struct list_head *next = cur->next;
+        element_t *el = container_of(cur, element_t, list);
+        free(el->value);
+
+        free(el);
+        cur = next;
+    }
+    head->next = head;
+    head->prev = head;
+    free(head);
+}
 
 /* Insert an element at head of queue */
 bool q_insert_head(struct list_head *head, char *s)
 {
+    if (!head)
+        return false;
+    element_t *new_el = malloc(sizeof(element_t));
+    if (!new_el)
+        return false;
+    new_el->value = strdup(s);
+    if (!new_el->value)
+        return false;
+    new_el->list.next = head->next;
+    new_el->list.prev = head;
+    head->next->prev = &(new_el->list);
+    head->next = &(new_el->list);
     return true;
 }
 
 /* Insert an element at tail of queue */
 bool q_insert_tail(struct list_head *head, char *s)
 {
+    if (!head)
+        return false;
+    element_t *new_el = malloc(sizeof(element_t));
+    if (!new_el)
+        return false;
+    new_el->value = strdup(s);
+    if (!new_el->value)
+        return false;
+    new_el->list.next = head;
+    new_el->list.prev = head->prev;
+    head->prev->next = &(new_el->list);
+    head->prev = &(new_el->list);
     return true;
 }
 
 /* Remove an element from head of queue */
 element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
-    return NULL;
+    if (head == NULL || head->next == head)
+        return NULL;
+    element_t *container = container_of(head->next, element_t, list);
+    if (!sp && !container->value)
+        return NULL;
+    strncpy(sp, container->value, bufsize - 1);
+    sp[bufsize - 1] = '\0';
+    head->next = head->next->next;
+    container->list.next->prev = head;
+    container->list.next = &(container->list);
+    container->list.prev = &(container->list);
+    return container;
 }
 
 /* Remove an element from tail of queue */
 element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
-    return NULL;
+    if (head == NULL || head->prev == head)
+        return NULL;
+    element_t *container = container_of(head->prev, element_t, list);
+    if (!sp && !container->value)
+        return NULL;
+    strncpy(sp, container->value, bufsize - 1);
+    sp[bufsize - 1] = '\0';
+    head->prev = head->prev->prev;
+    container->list.prev->next = head;
+    container->list.next = &(container->list);
+    container->list.prev = &(container->list);
+    return container;
 }
 
 /* Return number of elements in queue */
 int q_size(struct list_head *head)
 {
-    return -1;
+    int cnt = 0;
+    struct list_head **addr = &head->next;
+    for (; *addr != head; *addr = (*addr)->next)
+        cnt++;
+    return cnt;
 }
 
 /* Delete the middle node in queue */
