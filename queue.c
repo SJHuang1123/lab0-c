@@ -22,14 +22,12 @@ struct list_head *q_new()
 /* Free all storage used by queue */
 void q_free(struct list_head *head)
 {
-    struct list_head *cur = head->next;
-    while (cur != NULL && cur != head) {
-        struct list_head *next = cur->next;
-        element_t *el = container_of(cur, element_t, list);
+    struct list_head *pos, *n;
+    list_for_each_safe (pos, n, head) {
+        list_del(pos);
+        element_t *el = container_of(pos, element_t, list);
         free(el->value);
-
         free(el);
-        cur = next;
     }
     head->next = head;
     head->prev = head;
@@ -271,8 +269,34 @@ void q_sort(struct list_head *head, bool descend) {}
  * the right side of it */
 int q_ascend(struct list_head *head)
 {
-    // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+
+    struct list_head *pos, *tmp;
+    int count = 0;
+
+    /* Traverse the list and remove nodes that are smaller than any node that
+     * comes after them */
+    list_for_each_safe (pos, tmp, head) {
+        bool del = false;
+        struct list_head *cmp;
+        element_t *el_pos = container_of(pos, element_t, list);
+        list_for_each (cmp, pos) {
+            const element_t *el_cmp = container_of(cmp, element_t, list);
+            if (strcmp(el_cmp->value, el_pos->value) < 0) {
+                count++;
+                del = true;
+                break;
+            }
+        }
+        if (del) {
+            list_del(pos);
+            free(el_pos->value);
+            free(el_pos);
+        }
+    }
+
+    return count;
 }
 
 /* Remove every node which has a node with a strictly greater value anywhere to
@@ -280,7 +304,34 @@ int q_ascend(struct list_head *head)
 int q_descend(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+
+    struct list_head *pos, *tmp;
+    int count = 0;
+
+    /* Traverse the list and remove nodes that are smaller than any node that
+     * comes after them */
+    list_for_each_safe (pos, tmp, head) {
+        bool del = false;
+        struct list_head *cmp;
+        element_t *el_pos = container_of(pos, element_t, list);
+        list_for_each (cmp, pos) {
+            const element_t *el_cmp = container_of(cmp, element_t, list);
+            if (strcmp(el_cmp->value, el_pos->value) > 0) {
+                count++;
+                del = true;
+                break;
+            }
+        }
+        if (del) {
+            list_del(pos);
+            free(el_pos->value);
+            free(el_pos);
+        }
+    }
+
+    return count;
 }
 
 /* Merge all the queues into one sorted queue, which is in ascending/descending
