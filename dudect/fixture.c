@@ -51,6 +51,22 @@ enum {
     t_threshold_moderate = 10, /* Test failed */
 };
 
+int cmp(const void *a, const void *b)
+{
+    return (*(int *) a - *(int *) b);
+}
+
+static void extract_tail_percentiles(int64_t *ctx)
+{
+    qsort(ctx, N_MEASURES, sizeof(int64_t), cmp);
+    for (size_t i = 0; i < N_MEASURES; i++) {
+        double thr = 1 - (pow(0.5, 10 * (double) (i + 1) / N_MEASURES));
+        size_t pos = (size_t) ((double) N_MEASURES * (double) thr);
+        assert(pos < N_MEASURES);
+        ctx[i] = ctx[pos];
+    }
+}
+
 static void __attribute__((noreturn)) die(void)
 {
     exit(111);
@@ -133,6 +149,7 @@ static bool doit(int mode)
 
     bool ret = measure(before_ticks, after_ticks, input_data, mode);
     differentiate(exec_times, before_ticks, after_ticks);
+    extract_tail_percentiles(exec_times);
     update_statistics(exec_times, classes);
     ret &= report();
 
@@ -170,9 +187,11 @@ static bool test_const(char *text, int mode)
     return result;
 }
 
-#define DUT_FUNC_IMPL(op) \
-    bool is_##op##_const(void) { return test_const(#op, DUT(op)); }
-
+#define DUT_FUNC_IMPL(op)                \
+    bool is_##op##_const(void)           \
+    {                                    \
+        return test_const(#op, DUT(op)); \
+    }
 #define _(x) DUT_FUNC_IMPL(x)
 DUT_FUNCS
 #undef _

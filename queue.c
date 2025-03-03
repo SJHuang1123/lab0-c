@@ -83,11 +83,14 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
     if (head == NULL || head->next == head)
         return NULL;
-    element_t *el = container_of(head->next, element_t, list);
-    if (!sp && !el->value)
-        return NULL;
-    strncpy(sp, el->value, bufsize);
+    element_t *el = list_entry(head->next, element_t, list);
     list_del(&(el->list));
+    if (!sp)
+        return el;
+    size_t cpy_size = strlen(el->value);
+    cpy_size = (cpy_size < bufsize - 1) ? cpy_size : bufsize - 1;
+    strncpy(sp, el->value, cpy_size);
+    sp[cpy_size] = '\0';
     return el;
 }
 
@@ -96,11 +99,14 @@ element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
     if (head == NULL || head->prev == head)
         return NULL;
-    element_t *el = container_of(head->prev, element_t, list);
-    if (!sp && !el->value)
-        return NULL;
-    strncpy(sp, el->value, bufsize);
+    element_t *el = list_entry(head->prev, element_t, list);
     list_del(&(el->list));
+    if (!sp)
+        return el;
+    size_t cpy_size = strlen(el->value);
+    cpy_size = (cpy_size < bufsize - 1) ? cpy_size : bufsize - 1;
+    strncpy(sp, el->value, cpy_size);
+    sp[cpy_size] = '\0';
     return el;
 }
 
@@ -258,94 +264,98 @@ void q_reverseK(struct list_head *head, int k)
     }
 }
 
-static struct list_head *merge(struct list_head *first,
-                               struct list_head *second)
+/* Sort elements of queue in ascending/descending order */
+static int cmp_func(struct list_head *a, struct list_head *b)
 {
-    if (!first)
-        return second;
-    if (!second)
-        return first;
-
-    struct list_head *result = NULL;
-    const element_t *elem1 = list_entry(first, element_t, list);
-    const element_t *elem2 = list_entry(second, element_t, list);
-
-    if (strcmp(elem1->value, elem2->value) <= 0) {
-        result = first;
-        result->next = merge(first->next, second);
-        if (result->next)
-            result->next->prev = result;
-    } else {
-        result = second;
-        result->next = merge(first, second->next);
-        if (result->next)
-            result->next->prev = result;
-    }
-    return result;
+    const element_t *el_a = container_of(a, element_t, list);
+    const element_t *el_b = container_of(b, element_t, list);
+    return strcmp(el_a->value, el_b->value);
 }
 
-/* Recursively perform merge sort on a linear doubly-linked list.
-   'head' is the start of the list, which is terminated by NULL. */
-static struct list_head *mergeSort(struct list_head *head)
+static struct list_head *merge_sublists(struct list_head *lhs,
+                                        struct list_head *rhs)
+{
+    /* Temporary dummy node to build the merged list */
+    struct list_head dummy;
+    dummy.next = NULL;
+    struct list_head *tail = &dummy;
+
+    while (lhs && rhs) {
+        if (cmp_func(lhs, rhs) <= 0) {
+            lhs->prev = tail;
+            tail->next = lhs;
+            lhs = lhs->next;
+        } else {
+            rhs->prev = tail;
+            tail->next = rhs;
+            rhs = rhs->next;
+        }
+        tail = tail->next;
+    }
+    /* Attach whatever remains */
+    tail->next = (lhs ? lhs : rhs);
+    if (tail->next)
+        tail->next->prev = tail;
+
+    return dummy.next;
+}
+
+/*
+ * Recursively split a linear list into two parts and merge-sort them.
+ * 'head' is NULL-terminated. Returns the sorted list's new head.
+ */
+static struct list_head *sort_linear_list(struct list_head *head)
 {
     if (!head || !head->next)
         return head;
 
-    /* Use the slow/fast pointer strategy to find the middle */
-    struct list_head *slow = head;
-    struct list_head *fast = head->next;
-    while (fast) {
-        fast = fast->next;
-        if (fast) {
-            slow = slow->next;
-            fast = fast->next;
-        }
+    /* Find the midpoint using slow/fast pointers */
+    struct list_head *slow = head, *fast = head->next;
+    while (fast && fast->next) {
+        slow = slow->next;
+        fast = fast->next->next;
     }
+    struct list_head *second_half = slow->next;
+    slow->next = NULL; /* Split the list */
+    if (second_half)
+        second_half->prev = NULL;
 
-    /* Split the list into two halves */
-    struct list_head *mid = slow->next;
-    slow->next = NULL;
-    if (mid)
-        mid->prev = NULL;
+    /* Recursively sort both halves */
+    struct list_head *left_sorted = sort_linear_list(head);
+    struct list_head *right_sorted = sort_linear_list(second_half);
 
-    /* Recursively sort both halves and merge them */
-    struct list_head *left = mergeSort(head);
-    struct list_head *right = mergeSort(mid);
-    return merge(left, right);
+    /* Merge two sorted lists */
+    return merge_sublists(left_sorted, right_sorted);
 }
 
-/* Public merge sort function.
-   The list is circular with a sentinel node pointed to by 'head'.
-   The actual elements are in head->next ... head->prev.
-   This function detaches the linear list, sorts it, and then reassembles it. */
 void q_sort(struct list_head *head, bool descend)
 {
-    /* Check if the list is empty or has only one element */
-    if (!head || head->next == head || head->next->next == head)
+    if (!head || list_empty(head) || head->next->next == head)
         return;
 
-    /* Detach the linear list from the sentinel */
-    struct list_head *first = head->next;
-    head->prev->next = NULL; /* break the circular link at the tail */
-    first->prev = NULL;
+    /* 1) Detach the linear list from the circular sentinel */
+    struct list_head *first = head->next; /* real head of data */
+    first->prev->next = NULL; /* break circular link (tail->next=?) */
+    head->prev->next = NULL;  /* also break from the sentinel side */
+    first = sort_linear_list(first);
 
-    /* Sort the list using merge sort */
-    struct list_head *sorted = mergeSort(first);
-
-    /* Reassemble the sorted list into a circular doubly-linked list with the
-     * sentinel */
-    head->next = sorted;
-    sorted->prev = head;
-    struct list_head *tail = sorted;
-    while (tail->next != NULL) {
+    /* 3) Re-attach to make it circular again */
+    /*    Find the tail (NULL-terminated) */
+    struct list_head *tail = first;
+    while (tail->next)
         tail = tail->next;
-    }
-    tail->next = head;
-    head->prev = tail;
-    if (descend)
-        return q_reverse(head);
-}
 
+    /* sentinel <-> first */
+    head->next = first;
+    first->prev = head;
+
+    /* sentinel <-> tail */
+    head->prev = tail;
+    tail->next = head;
+
+    if (descend)
+        q_reverse(head);
+}
 /* Remove every node which has a node with a strictly less value anywhere to
  * the right side of it */
 int q_ascend(struct list_head *head)
@@ -409,10 +419,54 @@ int q_descend(struct list_head *head)
 }
 
 
-/* Merge all the queues into one sorted queue, which is in ascending/descending
- * order */
+int merge_queue(struct list_head *first, struct list_head *second)
+{
+    if (!first || !second) {
+        return 0;
+    }
+
+    LIST_HEAD(tmp);
+    while (!list_empty(first) && !list_empty(second)) {
+        element_t *element_1 = list_first_entry(first, element_t, list);
+        element_t *element_2 = list_first_entry(second, element_t, list);
+        element_t *element_min = strcmp(element_1->value, element_2->value) < 0
+                                     ? element_1
+                                     : element_2;
+        list_move_tail(&element_min->list, &tmp);
+    }
+    list_splice_tail_init(first, &tmp);
+    list_splice_tail_init(second, &tmp);
+    list_splice(&tmp, first);
+    return q_size(first);
+}
+
 int q_merge(struct list_head *head, bool descend)
 {
     // https://leetcode.com/problems/merge-k-sorted-lists/
-    return 0;
+    if (!head || list_empty(head)) {
+        return 0;
+    } else if (list_is_singular(head)) {
+        return q_size(list_first_entry(head, queue_contex_t, chain)->q);
+    }
+
+    int size = q_size(head);
+    int count = (size % 2) ? size / 2 + 1 : size / 2;
+    int queue_size = 0;
+
+    for (int i = 0; i < count; i++) {
+        queue_contex_t *first = list_first_entry(head, queue_contex_t, chain);
+        queue_contex_t *second =
+            list_entry(first->chain.next, queue_contex_t, chain);
+
+        while (!list_empty(first->q) && !list_empty(second->q)) {
+            queue_size = merge_queue(first->q, second->q);
+            list_move_tail(&second->chain, head);
+            first = list_entry(first->chain.next, queue_contex_t, chain);
+            second = list_entry(first->chain.next, queue_contex_t, chain);
+        }
+    }
+    if (descend) {
+        q_reverse(head);
+    }
+    return queue_size;
 }
