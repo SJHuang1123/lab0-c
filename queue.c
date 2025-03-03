@@ -13,60 +13,68 @@
 /* Create an empty queue */
 struct list_head *q_new()
 {
-    struct list_head *new = malloc(sizeof(struct list_head));
-    new->next = new;
-    new->prev = new;
-    return new;
+    struct list_head *new_queue = malloc(sizeof(struct list_head));
+
+    /* check malloc */
+    if (!new_queue) {
+        return NULL;
+    }
+
+    INIT_LIST_HEAD(new_queue);
+    return new_queue;
 }
+
 
 /* Free all storage used by queue */
 void q_free(struct list_head *head)
 {
-    struct list_head *pos, *n;
-    list_for_each_safe (pos, n, head) {
-        list_del(pos);
-        element_t *el = container_of(pos, element_t, list);
-        free(el->value);
-        free(el);
+    if (!head) {
+        return;
     }
-    head->next = head;
-    head->prev = head;
+
+    struct list_head *node, *safe;
+
+    list_for_each_safe (node, safe, head) {
+        list_del(node);
+        q_release_element(container_of(node, element_t, list));
+    }
     free(head);
 }
+
 
 /* Insert an element at head of queue */
 bool q_insert_head(struct list_head *head, char *s)
 {
-    if (!head)
+    if (!head || !s)
         return false;
     element_t *new_el = malloc(sizeof(element_t));
     if (!new_el)
         return false;
+    INIT_LIST_HEAD(&new_el->list);
     new_el->value = strdup(s);
-    if (!new_el->value)
+    if (!new_el->value) {
+        free(new_el);
         return false;
-    new_el->list.next = head->next;
-    new_el->list.prev = head;
-    head->next->prev = &(new_el->list);
-    head->next = &(new_el->list);
+    }
+    list_add(&(new_el->list), head);
     return true;
 }
 
 /* Insert an element at tail of queue */
 bool q_insert_tail(struct list_head *head, char *s)
 {
-    if (!head)
+    if (!head || !s)
         return false;
     element_t *new_el = malloc(sizeof(element_t));
     if (!new_el)
         return false;
+    INIT_LIST_HEAD(&new_el->list);
     new_el->value = strdup(s);
-    if (!new_el->value)
+    if (!new_el->value) {
+        free(new_el);
         return false;
-    new_el->list.next = head;
-    new_el->list.prev = head->prev;
-    head->prev->next = &(new_el->list);
-    head->prev = &(new_el->list);
+    }
+    list_add_tail(&(new_el->list), head);
     return true;
 }
 
@@ -75,16 +83,12 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
     if (head == NULL || head->next == head)
         return NULL;
-    element_t *container = container_of(head->next, element_t, list);
-    if (!sp && !container->value)
+    element_t *el = container_of(head->next, element_t, list);
+    if (!sp && !el->value)
         return NULL;
-    strncpy(sp, container->value, bufsize - 1);
-    sp[bufsize - 1] = '\0';
-    head->next = head->next->next;
-    container->list.next->prev = head;
-    container->list.next = &(container->list);
-    container->list.prev = &(container->list);
-    return container;
+    strncpy(sp, el->value, bufsize);
+    list_del(&(el->list));
+    return el;
 }
 
 /* Remove an element from tail of queue */
@@ -92,24 +96,22 @@ element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
     if (head == NULL || head->prev == head)
         return NULL;
-    element_t *container = container_of(head->prev, element_t, list);
-    if (!sp && !container->value)
+    element_t *el = container_of(head->prev, element_t, list);
+    if (!sp && !el->value)
         return NULL;
-    strncpy(sp, container->value, bufsize - 1);
-    sp[bufsize - 1] = '\0';
-    head->prev = head->prev->prev;
-    container->list.prev->next = head;
-    container->list.next = &(container->list);
-    container->list.prev = &(container->list);
-    return container;
+    strncpy(sp, el->value, bufsize);
+    list_del(&(el->list));
+    return el;
 }
 
 /* Return number of elements in queue */
 int q_size(struct list_head *head)
 {
+    if (!head)
+        return 0;
     int cnt = 0;
-    struct list_head **addr = &head->next;
-    for (; *addr != head; *addr = (*addr)->next)
+    struct list_head *pos;
+    list_for_each (pos, head)
         cnt++;
     return cnt;
 }
@@ -126,13 +128,9 @@ bool q_delete_mid(struct list_head *head)
         slow = slow->next;
     }
 
-    element_t *container = container_of(slow, element_t, list);
-    container->list.prev->next = container->list.next;
-    container->list.next->prev = container->list.prev;
-    container->list.next = &(container->list);
-    container->list.prev = &(container->list);
-    free(container->value);
-    free(container);
+    element_t *el = container_of(slow, element_t, list);
+    list_del(slow);
+    q_release_element(el);
     // https://leetcode.com/problems/delete-the-middle-node-of-a-linked-list/
     return true;
 }
@@ -179,15 +177,13 @@ bool q_delete_dup(struct list_head *head)
 /* Swap every two adjacent nodes */
 void q_swap(struct list_head *head)
 {
+    if (!head || list_empty(head))
+        return;
     struct list_head *cur = head->next;
     while (cur != head && cur->next != head) {
         struct list_head *nxt = cur->next->next;
         struct list_head *adj = cur->next;
-        cur->prev->next = adj;
-        adj->prev = cur->prev;
-        adj->next = cur;
-        cur->prev = adj;
-        cur->next = nxt;
+        list_move(adj, cur->prev);
         cur = nxt;
     }
     // https://leetcode.com/problems/swap-nodes-in-pairs/
@@ -262,41 +258,37 @@ void q_reverseK(struct list_head *head, int k)
     }
 }
 
-/* Sort elements of queue in ascending/descending order */
 void q_sort(struct list_head *head, bool descend) {}
 
 /* Remove every node which has a node with a strictly less value anywhere to
  * the right side of it */
 int q_ascend(struct list_head *head)
 {
+    // https://leetcode.com/problems/remove-nodes-from-linked-list/
     if (!head || list_empty(head))
         return 0;
 
     struct list_head *pos, *tmp;
-    int count = 0;
 
     /* Traverse the list and remove nodes that are smaller than any node that
      * comes after them */
     list_for_each_safe (pos, tmp, head) {
         bool del = false;
-        struct list_head *cmp;
         element_t *el_pos = container_of(pos, element_t, list);
-        list_for_each (cmp, pos) {
-            const element_t *el_cmp = container_of(cmp, element_t, list);
-            if (strcmp(el_cmp->value, el_pos->value) < 0) {
-                count++;
+        for (struct list_head *cur = pos->next; cur != head; cur = cur->next) {
+            const element_t *el_cur = container_of(cur, element_t, list);
+            if (strcmp(el_cur->value, el_pos->value) < 0) {
                 del = true;
                 break;
             }
         }
         if (del) {
             list_del(pos);
-            free(el_pos->value);
-            free(el_pos);
+            q_release_element(el_pos);
         }
     }
 
-    return count;
+    return q_size(head);
 }
 
 /* Remove every node which has a node with a strictly greater value anywhere to
@@ -308,31 +300,28 @@ int q_descend(struct list_head *head)
         return 0;
 
     struct list_head *pos, *tmp;
-    int count = 0;
 
     /* Traverse the list and remove nodes that are smaller than any node that
      * comes after them */
     list_for_each_safe (pos, tmp, head) {
         bool del = false;
-        struct list_head *cmp;
         element_t *el_pos = container_of(pos, element_t, list);
-        list_for_each (cmp, pos) {
-            const element_t *el_cmp = container_of(cmp, element_t, list);
-            if (strcmp(el_cmp->value, el_pos->value) > 0) {
-                count++;
+        for (struct list_head *cur = pos->next; cur != head; cur = cur->next) {
+            const element_t *el_cur = container_of(cur, element_t, list);
+            if (strcmp(el_cur->value, el_pos->value) > 0) {
                 del = true;
                 break;
             }
         }
         if (del) {
             list_del(pos);
-            free(el_pos->value);
-            free(el_pos);
+            q_release_element(el_pos);
         }
     }
 
-    return count;
+    return q_size(head);
 }
+
 
 /* Merge all the queues into one sorted queue, which is in ascending/descending
  * order */
