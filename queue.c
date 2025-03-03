@@ -258,7 +258,93 @@ void q_reverseK(struct list_head *head, int k)
     }
 }
 
-void q_sort(struct list_head *head, bool descend) {}
+static struct list_head *merge(struct list_head *first,
+                               struct list_head *second)
+{
+    if (!first)
+        return second;
+    if (!second)
+        return first;
+
+    struct list_head *result = NULL;
+    const element_t *elem1 = list_entry(first, element_t, list);
+    const element_t *elem2 = list_entry(second, element_t, list);
+
+    if (strcmp(elem1->value, elem2->value) <= 0) {
+        result = first;
+        result->next = merge(first->next, second);
+        if (result->next)
+            result->next->prev = result;
+    } else {
+        result = second;
+        result->next = merge(first, second->next);
+        if (result->next)
+            result->next->prev = result;
+    }
+    return result;
+}
+
+/* Recursively perform merge sort on a linear doubly-linked list.
+   'head' is the start of the list, which is terminated by NULL. */
+static struct list_head *mergeSort(struct list_head *head)
+{
+    if (!head || !head->next)
+        return head;
+
+    /* Use the slow/fast pointer strategy to find the middle */
+    struct list_head *slow = head;
+    struct list_head *fast = head->next;
+    while (fast) {
+        fast = fast->next;
+        if (fast) {
+            slow = slow->next;
+            fast = fast->next;
+        }
+    }
+
+    /* Split the list into two halves */
+    struct list_head *mid = slow->next;
+    slow->next = NULL;
+    if (mid)
+        mid->prev = NULL;
+
+    /* Recursively sort both halves and merge them */
+    struct list_head *left = mergeSort(head);
+    struct list_head *right = mergeSort(mid);
+    return merge(left, right);
+}
+
+/* Public merge sort function.
+   The list is circular with a sentinel node pointed to by 'head'.
+   The actual elements are in head->next ... head->prev.
+   This function detaches the linear list, sorts it, and then reassembles it. */
+void q_sort(struct list_head *head, bool descend)
+{
+    /* Check if the list is empty or has only one element */
+    if (!head || head->next == head || head->next->next == head)
+        return;
+
+    /* Detach the linear list from the sentinel */
+    struct list_head *first = head->next;
+    head->prev->next = NULL; /* break the circular link at the tail */
+    first->prev = NULL;
+
+    /* Sort the list using merge sort */
+    struct list_head *sorted = mergeSort(first);
+
+    /* Reassemble the sorted list into a circular doubly-linked list with the
+     * sentinel */
+    head->next = sorted;
+    sorted->prev = head;
+    struct list_head *tail = sorted;
+    while (tail->next != NULL) {
+        tail = tail->next;
+    }
+    tail->next = head;
+    head->prev = tail;
+    if (descend)
+        return q_reverse(head);
+}
 
 /* Remove every node which has a node with a strictly less value anywhere to
  * the right side of it */
